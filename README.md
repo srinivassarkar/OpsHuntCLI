@@ -1,43 +1,74 @@
-# 🎯 OpsHunt AI — DevOps Daily Job Digest Tool
+# 🎯 OpsHunt AI — Serverless DevOps Daily Job Digest
 
-A lightweight, automated command-line utility designed for macOS terminals. It aggregates DevOps/SRE job postings daily from 7 different sources, ranks them against your profile using Google's Gemini AI, compiles them into a custom-designed Excel spreadsheet, logs them in Google Sheets, and emails you a formatted HTML digest.
+A serverless, automated DevOps & SRE job scraper and email digest tool. It runs entirely for free in the cloud using **GitHub Actions**, meaning you do not need to host it on a personal server or keep a local machine running. 
+
+The tool aggregates DevOps and SRE job postings daily from 11 different sources, performs smart keyword-based pre-filtering to minimize AI quota usage, scores the most relevant jobs using Google's Gemini AI, compiles them into a custom-designed Excel spreadsheet, logs them to Google Sheets, and sends a formatted HTML digest directly to your inbox.
 
 ---
 
 ## 🌟 Core Features
 
-- **11 Scraped Feeds**: Remotive, Jobicy, We Work Remotely RSS, Otta, Arbeitnow, Naukri, Instahyre, LinkedIn, Indeed, ZipRecruiter, RemoteOK, Hacker News, and Reddit.
-- **Smart Pre-Filtering**: Performs local keyword scans before calling Gemini to reduce API token usage by 70%.
-- **Anti-Bot Resiliency**: Set up with emulated browser headers, 10s timeouts, and automatic retries to bypass simple bot blocks.
-- **Dynamic Gemini AI Scoring**: Evaluates and ranks jobs (0-100) based on your custom skills, experience (3 years), preferred locations, and downranks (with a local fallback engine).
-- **Premium Color Theme**: Styled HTML email body and matching formatted Excel spreadsheets (Deep Navy & Gold scheme).
-- **Google Sheets Integration**: Automatically appends scored jobs directly to your online Google Sheet.
-- **Auto-Installer**: Simple shell script to install optimal weekday and Saturday schedules on macOS.
+- **11 Scraped Feeds**: Aggregates openings from Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri, Instahyre, LinkedIn, Indeed, ZipRecruiter, RemoteOK, Hacker News Jobs, and Reddit (`r/devops` and `r/sre`).
+- **Serverless Execution**: Runs entirely in the cloud via GitHub Actions schedules. No servers, cron-daemons, or local terminals required.
+- **Smart Pre-Filtering**: Analyzes jobs locally before calling Gemini to reduce daily API token usage by 70-85%.
+- **Dynamic Gemini AI Scoring**: Matches and ranks jobs (0-100) based on your custom skills, target experience, preferred locations, and target companies (with a local fallback engine).
+- **Premium Navy & Gold Styling**: Delivers a styled HTML email digest alongside an automated, color-coded Excel spreadsheet.
+- **Google Sheets Integration**: Automatically appends scored jobs directly to an online Google Sheet for tracking.
+- **Seen Jobs Memory**: Persists previously sent jobs back to Git to ensure you never receive duplicate emails.
 
 ---
 
-## 🛠️ Installation & Setup
+## ☁️ 1. Serverless Setup on GitHub (Recommended)
 
-### 1. Prerequisites
-Ensure you have **Python 3.9+** installed on your macOS system. Verify in your terminal:
+The workflow is pre-configured to run automatically at:
+- **Weekdays (Monday-Friday) at 11:30 AM IST** (6:00 AM UTC)
+- **Saturdays at 10:00 AM IST** (4:30 AM UTC)
+
+### Setup Steps:
+
+1. **Add Repository Secrets**:
+   Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add the following:
+   - **`CONFIG_JSON`**: Paste the entire content of your `config.json` file (see the skeleton format below).
+   - **`SERVICE_ACCOUNT_JSON`** (Optional): If using Google Sheets integration, paste the entire JSON content of your `service_account.json` credentials. Otherwise, leave this secret blank.
+
+2. **Configure Workflow Permissions**:
+   To allow the workflow to commit and push changes back to `seen_jobs.json` (to prevent duplicate emails):
+   - Go to **Settings** -> **Actions** -> **General** -> scroll down to **Workflow permissions**.
+   - Select **Read and write permissions**.
+   - Click **Save**.
+
+3. **Manual Trigger / Dry Run**:
+   - Go to the **Actions** tab in your repository.
+   - Click on **Daily DevOps Job Digest** in the left sidebar.
+   - Click **Run workflow** -> **Run workflow** to trigger an immediate test run and watch the logs execute live!
+
+---
+
+## 🛠️ 2. Local Setup & Development (Optional)
+
+If you want to run the script locally for debugging or customization:
+
+### Prerequisites
+Ensure you have **Python 3.9+** installed:
 ```bash
 python3 --version
 ```
 
-### 2. Install Dependencies
-Open your Terminal, navigate to the `ops_hunt_python_digest` folder, and install the libraries:
-```bash
-pip3 install -r requirements.txt
-```
+### Installation
+1. Install the required dependencies:
+   ```bash
+   pip3 install -r requirements.txt
+   ```
+2. Run the script manually:
+   ```bash
+   python3 digest.py
+   ```
 
-### 3. Configure Credentials (`config.json`)
-Open `config.json` in a text editor to configure your keys:
-- **Gemini API Key**: Add your Google Gemini API key in the `"gemini_api_key"` field.
-- **Gmail App Password**: Enter your email address and a 16-character [Gmail App Password](https://myaccount.google.com/security) (requires 2-Step Verification to be turned ON in your Google Account security settings).
-- **Google Sheet ID** (Optional): Add your Google Sheet ID under `"sheet_id"` and drop your service account credentials file in this folder named `service_account.json`.
+---
 
-### 4. Configuration Skeleton (`config.json`)
-Create a `config.json` file in the root directory with the following structure:
+## 📋 Configuration Format (`config.json`)
+
+Configure your search parameters, credentials, and email settings using the following JSON structure. Store this in `config.json` (do not commit this file to public repositories; it is ignored by git to protect your secrets):
 
 ```json
 {
@@ -87,58 +118,3 @@ Create a `config.json` file in the root directory with the following structure:
   }
 }
 ```
-
----
-
-## 🚀 How to Run
-
-### Run Manually
-To execute a scrape, score, compile, and email run immediately, run:
-```bash
-python3 digest.py
-```
-
-### Run Automatically (macOS Scheduler)
-To automate the script to run daily (Mon-Fri at **11:30 AM** and Sat at **10:00 AM**):
-1. Make the setup script executable:
-   ```bash
-   chmod +x setup_cron.sh
-   ```
-2. Run it:
-   ```bash
-   ./setup_cron.sh
-   ```
-
-> [!IMPORTANT]
-> **macOS Disk Access Permissions**:
-> Starting with macOS Mojave, macOS blocks `cron` from accessing folders by default. To allow the scheduler to run:
-> 1. Go to **System Settings** -> **Privacy & Security** -> **Full Disk Access**.
-> 2. Click the `+` button.
-> 3. Press `Cmd + Shift + G`, type `/usr/sbin/cron`, and select **cron**.
-> 4. Ensure the toggle for **cron** is enabled.
-
----
-
-## ☁️ Serverless Automation (GitHub Actions)
-
-Instead of hosting the script on a personal server or local machine, you can automate it for free using **GitHub Actions**. The configured workflow is scheduled to run at:
-- **Weekdays (Monday-Friday) at 11:30 AM IST** (6:00 AM UTC)
-- **Saturdays at 10:00 AM IST** (4:30 AM UTC)
-
-### Setup Instructions
-
-1. **Add Repository Secrets**:
-   Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add:
-   - **`CONFIG_JSON`**: Paste the entire content of your local `config.json` file.
-   - **`SERVICE_ACCOUNT_JSON`** (Optional): If you use Google Sheets integration, paste the entire JSON content of your `service_account.json` file. Otherwise, leave this secret empty.
-
-2. **Configure Workflow Permissions**:
-   To allow the workflow to commit and push changes back to `seen_jobs.json` (which prevents duplicate emails):
-   - Go to **Settings** -> **Actions** -> **General** -> scroll down to **Workflow permissions**.
-   - Select **Read and write permissions**.
-   - Click **Save**.
-
-3. **Manual Trigger / Dry Run**:
-   - Go to the **Actions** tab in your repository.
-   - Click on **Daily DevOps Job Digest** in the left sidebar.
-   - Click **Run workflow** -> **Run workflow** to trigger a manual execution.
