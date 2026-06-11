@@ -17,16 +17,18 @@ graph TD
     C --> D["Deduplication & Quality Filters"]
     D --> E{"Smart Pre-Filtering (Keywords)"}
     E -->|"< 2 Keywords"| F["Procedural Fallback Scorer"]
-    E -->|">= 2 Keywords"| G["Gemini 2.5 Flash Scorer"]
+    E -->|">= 2 Keywords"| G["Gemini 2.5 Flash Scorer (google-genai)"]
     G -->|"Quota Exceeded (429)"| F
     F --> H["Aggregated Scored Jobs"]
     G --> H
-    H --> I["Excel openpyxl Styler"]
-    H --> J["Optional Google Sheets Sync"]
-    I --> K["Gmail SMTP Mailer"]
-    K --> L["Candidate Inbox"]
-    K --> M["Seen Jobs Update"]
-    M --> N["seen_jobs.json Pushed to Git"]
+    H --> I{"Are there matches >= min_score?"}
+    I -->|No| J["Save seen URLs & Exit Cleanly"]
+    I -->|Yes| K["Excel openpyxl Styler"]
+    K --> L["Optional Google Sheets Sync"]
+    K --> M["Gmail SMTP Mailer"]
+    M --> N["Candidate Inbox"]
+    M --> O["Seen Jobs Update"]
+    O --> P["seen_jobs.json Pushed to Git"]
 ```
 
 ### 2. Core Components
@@ -34,10 +36,11 @@ graph TD
 - **Trigger Layer**: Runs automatically in the cloud on GitHub Actions based on a schedule (Weekdays at 11:30 AM IST, Saturdays at 10:00 AM IST) or via manual triggers.
 - **Scraping Layer**: Ingests DevOps/SRE job openings concurrently from 11 distinct sources (traditional APIs, RSS feeds, open-search portals, and JobSpy).
 - **Filtering & Deduplication Layer**: Cleanses raw scraping data, removes duplicates using URL parsing, applies role keyword matching, and enforces freshness rules.
-- **AI Scoring Layer**: Uses a smart pre-filtering mechanism to skip Gemini API calls for weak matches (saving 70-85% in API limits). High-relevance jobs are sent to Gemini 2.5 Flash; the local procedural scorer is used as a fallback if API rate/quota limits are reached.
-- **Compilation Layer**: Compiles scored jobs into a custom Deep Navy & Gold themed Excel spreadsheet with color-coded rows based on match score.
+- **AI Scoring Layer**: Uses a smart pre-filtering mechanism to skip Gemini API calls for weak matches (saving 70-85% in API limits). High-relevance jobs are sent to Gemini 2.5 Flash using the official `google-genai` SDK. A local procedural scorer is used as a fallback if API rate/quota limits are reached.
+- **Relevance Threshold & Early Exit**: Scored jobs are filtered by `min_score_to_email` (e.g. 65). If no jobs meet the threshold, the script updates the seen URLs database to prevent reprocessing tomorrow and exits cleanly without sending a blank email.
+- **Compilation Layer**: Compiles matched jobs into a custom Deep Navy & Gold themed Excel spreadsheet with color-coded rows based on match score.
 - **Delivery Layer**: Builds a custom HTML email digest with score badges and layout spacing, attaches the Excel file, and dispatches it via SMTP.
-- **Persistence Layer**: Records successfully emailed job URLs in `seen_jobs.json` and pushes it back to GitHub to avoid duplicate emails.
+- **Persistence Layer**: Records successfully parsed job URLs in `seen_jobs.json` and pushes it back to GitHub to avoid duplicate emails.
 
 ---
 
@@ -63,16 +66,19 @@ job_record = {
 ### 2. Module Specifications
 
 #### A. Scraper Module (`digest.py`)
-- **`make_request(url, params, headers)`**: Standard request wrapper. Enforces a `User-Agent: Mozilla/5.0 compatible` browser header, a strict `10.0` second timeout, and a single-retry policy.
-- **`scrape_jobspy()`**: Dynamically inspects the locally installed version of the `python-jobspy` library to check for supported boards (e.g., LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs, Naukri) and supported arguments (`google_search_term`, `hours_old`). It executes targeted searches using boolean query syntax (e.g. `(kubernetes OR terraform) -intern -support`) and handles missing/empty data rows cleanly using `.fillna("")`.
-- **Feed-Specific Scrapers**: Custom logic handles mapping for Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri API, Instahyre, RemoteOK, Hacker News RSS, and Reddit RSS.
+- **`make_request(url, params, headers)`**: Standard request wrapper. Enforces browser headers, strict `10.0` second timeout, and a single-retry policy.
+- **`scrape_jobspy()`**: Dynamically inspects the locally installed version of the `python-jobspy` library to check for supported boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs, Naukri, Bayt) and supported arguments. It excludes `bdjobs` to avoid type error initialization crashes in JobSpy.
+- **Feed-Specific Scrapers**: Custom logic handles mapping for Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri API, Instahyre, RemoteOK, Hacker News RSS (`hnrss.org/jobs`), and Reddit RSS.
 
 #### B. Pre-Filtering & Scoring Module (`digest.py`)
 - **Smart Pre-Filter Loop**: Iterates through deduplicated jobs and scans the text for `strong_match_keywords`.
   - **Count < 2**: Bypasses Gemini API. Assigns a score of `50` and calls `calculate_local_matching()` to map missing/matching skills.
   - **Count >= 2**: Sleeps `4.0` seconds (RPM limit protection) and calls `score_job_with_gemini()`.
-- **`score_job_with_gemini(job, profile, api_key)`**: Compiles the candidate profile (skills, target roles, preferred locations, target companies) into a prompt, calls Gemini 2.5 Flash, parses the JSON response, and returns the match score, matching/missing skills, and an alignment reason.
-- **`calculate_local_matching(job, profile)`**: The procedural scoring engine. Evaluates keyword densities, applies remote/location bonuses (+10/15), role bonuses (+20), target company bonuses (+15), and downranks noise keywords to a score of `10`.
+- **`score_job_with_gemini(job, profile, api_key)`**: Configures `google.genai` client, compiles candidate profile into a prompt, calls Gemini 2.5 Flash, parses the JSON response, and returns the match score, matching/missing skills, and alignment reason.
+- **`calculate_local_matching(job, profile)`**: The procedural scoring engine. 
+  - **Experience Check**: Automatically downranks senior/lead/staff/principal roles (or junior roles if candidate experience is >3 years) to a score of `10`.
+  - **Skill Match Capping**: Caps the divisor at `5` matching skills so that candidates matching 3-5 core skills receive realistic matching scores (rather than dividing by the entire 20+ skill profile list).
+  - Evaluates keyword densities, applies remote/location bonuses (+10/15), role bonuses (+20), target company bonuses (+15), and downranks noise keywords to a score of `10`.
 
 #### C. openpyxl Excel Compiler (`digest.py`)
 - **`style_excel_sheet(excel_path)`**:

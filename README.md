@@ -1,6 +1,6 @@
 # 🎯 OpsHunt AI — Serverless DevOps Daily Job Digest
 
-A serverless, automated DevOps & SRE job scraper and email digest tool. It runs entirely for free in the cloud using **GitHub Actions**, meaning you do not need to host it on a personal server or keep a local machine running. 
+A serverless, automated DevOps & SRE job scraper and email digest tool. It runs entirely for free in the cloud using **GitHub Actions**, meaning you do not need to host it on a personal server or keep a local machine running.
 
 The tool aggregates DevOps and SRE job postings daily from 11 different sources, performs smart keyword-based pre-filtering to minimize AI quota usage, scores the most relevant jobs using Google's Gemini AI, compiles them into a custom-designed Excel spreadsheet, logs them to Google Sheets, and sends a formatted HTML digest directly to your inbox.
 
@@ -8,10 +8,12 @@ The tool aggregates DevOps and SRE job postings daily from 11 different sources,
 
 ## 🌟 Core Features
 
-- **11 Scraped Feeds**: Aggregates openings from Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri, Instahyre, LinkedIn, Indeed, ZipRecruiter, RemoteOK, Hacker News Jobs, and Reddit (`r/devops` and `r/sre`).
+- **11 Scraped Feeds**: Aggregates openings from Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri, Instahyre, LinkedIn, Indeed, ZipRecruiter, RemoteOK, Hacker News Jobs (`hnrss.org/jobs`), and Reddit (`r/devops` and `r/sre`).
 - **Serverless Execution**: Runs entirely in the cloud via GitHub Actions schedules. No servers, cron-daemons, or local terminals required.
 - **Smart Pre-Filtering**: Analyzes jobs locally before calling Gemini to reduce daily API token usage by 70-85%.
-- **Dynamic Gemini AI Scoring**: Matches and ranks jobs (0-100) based on your custom skills, target experience, preferred locations, and target companies (with a local fallback engine).
+- **Experience-Level Downranking**: Automatically flags and downranks senior, staff, lead, principal, manager, and junior roles that mismatch the candidate's target experience level (both in Gemini and the local fallback engine).
+- **Dynamic Gemini AI Scoring**: Matches and ranks jobs (0-100) based on your custom skills, target experience, preferred locations, and target companies (using the modern `google-genai` SDK with a robust local fallback engine).
+- **Early Exit on Zero Matches**: If no jobs meet your minimum score threshold on a given day, the script updates the seen database and exits cleanly, avoiding sending spam/empty emails.
 - **Premium Navy & Gold Styling**: Delivers a styled HTML email digest alongside an automated, color-coded Excel spreadsheet.
 - **Google Sheets Integration**: Automatically appends scored jobs directly to an online Google Sheet for tracking.
 - **Seen Jobs Memory**: Persists previously sent jobs back to Git to ensure you never receive duplicate emails.
@@ -28,7 +30,7 @@ The workflow is pre-configured to run automatically at:
 
 1. **Add Repository Secrets**:
    Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add the following:
-   - **`CONFIG_JSON`**: Paste the entire content of your `config.json` file (see the skeleton format below).
+   - **`CONFIG_JSON`**: Paste the entire content of your `config.json` file (see the skeleton format below). Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/).
    - **`SERVICE_ACCOUNT_JSON`** (Optional): If using Google Sheets integration, paste the entire JSON content of your `service_account.json` credentials. Otherwise, leave this secret blank.
 
 2. **Configure Workflow Permissions**:
@@ -114,7 +116,9 @@ Configure your search parameters, credentials, and email settings using the foll
     ]
   },
   "scraper": {
-    "max_job_age_days": 7
+    "max_job_age_days": 7,
+    "min_score_to_email": 65,
+    "top_n_in_email": 7
   }
 }
 ```
