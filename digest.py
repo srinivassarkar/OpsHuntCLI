@@ -714,8 +714,8 @@ def calculate_local_matching(job, profile):
     target_cos = profile.get("target_companies", [])
     if any(co.lower() in job["company"].lower() for co in target_cos):
         company_bonus = 15
-
-    skill_ratio = len(matching_skills) / len(profile["skills"]) if profile.get("skills") else 0
+    divisor = min(5, len(profile["skills"])) if profile.get("skills") else 1
+    skill_ratio = min(1.0, len(matching_skills) / divisor)
     base_score = int(skill_ratio * 65)
     final_score = min(100, base_score + role_bonus + location_bonus + company_bonus)
     if final_score < 20:
