@@ -661,6 +661,29 @@ def calculate_local_matching(job, profile):
             "reason": "Procedural Scorer: Downranked due to matching noise or experience requirements."
         }
 
+    # 1.5 Experience level downrank filter (mirroring Gemini rules)
+    candidate_exp = profile.get("experience_years", 3)
+    senior_level_keywords = ["senior", "sr.", "sr ", "staff", "lead", "principal", "architect", "manager", "director", "head of", "vp"]
+    junior_level_keywords = ["junior", "jr.", "jr ", "entry level", "fresher", "graduate", "intern", "associate"]
+    
+    if candidate_exp <= 3:
+        if any(kw in title for kw in senior_level_keywords):
+            return {
+                "score": 10,
+                "matching_skills": [],
+                "missing_skills": profile.get("skills", [])[:5],
+                "reason": f"Procedural Scorer: Downranked because role title is too senior for candidate experience ({candidate_exp} yrs)."
+            }
+            
+    if candidate_exp > 3:
+        if any(kw in title for kw in junior_level_keywords):
+            return {
+                "score": 10,
+                "matching_skills": [],
+                "missing_skills": profile.get("skills", [])[:5],
+                "reason": f"Procedural Scorer: Downranked because role title is too junior for candidate experience ({candidate_exp} yrs)."
+            }
+
     # 2. Skills matching
     matching_skills = []
     missing_skills = []
@@ -1334,8 +1357,21 @@ def main():
         job_scored["reason"] = score_res["reason"]
         scored_jobs.append(job_scored)
 
+    # 7. Save tracked URLs to avoid duplicate emails tomorrow (always do this for all scraped jobs)
+    for job in new_jobs:
+        seen_jobs.add(job["url"])
+    save_seen_jobs(seen_jobs)
+
+    # Filter scored jobs by min_score_to_email threshold
+    min_score = scraper_config.get("min_score_to_email", 70)
+    matching_scored_jobs = [j for j in scored_jobs if j["score"] >= min_score]
+
+    if not matching_scored_jobs:
+        print(f"[Process] No jobs met the minimum score threshold of {min_score}. Exiting.")
+        return
+
     # 4. Save to Excel
-    df = pd.DataFrame(scored_jobs)
+    df = pd.DataFrame(matching_scored_jobs)
     columns_order = ["score", "title", "company", "location", "source", "url", "reason", "matching_skills", "missing_skills", "posted_date"]
     df = df[columns_order]
     df = df.sort_values(by="score", ascending=False)
@@ -1350,15 +1386,10 @@ def main():
 
     # 5. Write to Google Sheets
     if "google_sheets" in config:
-        write_to_google_sheet(scored_jobs, config["google_sheets"])
+        write_to_google_sheet(matching_scored_jobs, config["google_sheets"])
 
     # 6. Email Digest
-    send_digest_email(scored_jobs, excel_path, config, scraper_config, len(raw_jobs))
-
-    # 7. Save tracked URLs to avoid duplicate emails tomorrow
-    for job in new_jobs:
-        seen_jobs.add(job["url"])
-    save_seen_jobs(seen_jobs)
+    send_digest_email(matching_scored_jobs, excel_path, config, scraper_config, len(raw_jobs))
     
     print("=== OpsHunt AI CLI Digest Execution Completed Successfully ===")
 
