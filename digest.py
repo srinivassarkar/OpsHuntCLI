@@ -115,7 +115,11 @@ def scrape_remotive():
         print("[Scraper] Querying Remotive API...")
         res = make_request("https://remotive.com/api/remote-jobs?category=devops-sysadmin")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse Remotive JSON: {e}")
+                return []
             for r_job in data.get("jobs", []):
                 jobs.append({
                     "title": r_job.get("title", ""),
@@ -137,7 +141,11 @@ def scrape_jobicy():
         print("[Scraper] Querying Jobicy API...")
         res = make_request("https://jobicy.com/api/v2/remote-jobs?count=50&industry=engineering")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse Jobicy JSON: {e}")
+                return []
             for j_job in data.get("jobs", []):
                 jobs.append({
                     "title": j_job.get("jobTitle", ""),
@@ -145,7 +153,7 @@ def scrape_jobicy():
                     "location": j_job.get("jobGeo", "Remote"),
                     "is_remote": True,
                     "source": "jobicy",
-                    "url": j_job.get("jobUrl", ""),
+                    "url": j_job.get("url", ""),
                     "description": clean_html(j_job.get("jobDescription", "")),
                     "posted_date": j_job.get("pubDate", datetime.now().isoformat())
                 })
@@ -198,7 +206,11 @@ def scrape_otta():
         print("[Scraper] Querying Otta Public Search API...")
         res = make_request("https://app.otta.com/api/jobs?role=devops&location=india")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse Otta JSON: {e}")
+                return []
             jobs_list = []
             if isinstance(data, list):
                 jobs_list = data
@@ -247,14 +259,23 @@ def scrape_arbeitnow():
         print("[Scraper] Querying Arbeitnow API...")
         res = make_request("https://www.arbeitnow.com/api/job-board-api?tags[]=devops&tags[]=kubernetes")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse Arbeitnow JSON: {e}")
+                return []
             for item in data.get("data", []):
                 title = item.get("title", "")
                 company = item.get("company_name", "")
                 url = item.get("url", "")
                 loc = item.get("location", "Remote")
                 desc = clean_html(item.get("description", ""))
-                posted = item.get("created_at", datetime.now().isoformat())
+                
+                posted_val = item.get("created_at")
+                if isinstance(posted_val, (int, float)):
+                    posted = datetime.fromtimestamp(posted_val).isoformat()
+                else:
+                    posted = str(posted_val) if posted_val else datetime.now().isoformat()
                 
                 jobs.append({
                     "title": title,
@@ -325,7 +346,11 @@ def scrape_instahyre():
         print("[Scraper] Querying Instahyre API...")
         res = make_request("https://www.instahyre.com/api/v1/opportunity/?format=json&search=devops")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse Instahyre JSON: {e}")
+                return []
             opportunities = data.get("opportunities", []) or data.get("results", []) or []
             for item in opportunities:
                 title = item.get("title", "")
@@ -387,7 +412,7 @@ def scrape_jobspy():
         if q1_sites:
             queries.append({
                 "site_name": q1_sites,
-                "search_term": '("devops" OR "sre" OR "platform" OR "cloud engineer") (kubernetes OR terraform) -intern -support -fresher',
+                "search_term": 'devops OR sre OR "platform engineer" OR "cloud engineer"',
                 "location": "India",
                 "country_indeed": "India",
                 "results_wanted": 25
@@ -398,7 +423,7 @@ def scrape_jobspy():
         if q2_sites:
             queries.append({
                 "site_name": q2_sites,
-                "search_term": '("devops" OR "sre" OR "platform" OR "cloud engineer") (kubernetes OR terraform) -intern -support -fresher',
+                "search_term": 'devops OR sre OR "platform engineer" OR "cloud engineer"',
                 "location": "Remote",
                 "country_indeed": "USA",
                 "results_wanted": 25
@@ -408,14 +433,14 @@ def scrape_jobspy():
         if "google" in supported_sites and has_google_term:
             queries.append({
                 "site_name": ["google"],
-                "search_term": "",
+                "search_term": "devops engineer",
                 "google_search_term": "devops engineer jobs in India since yesterday",
                 "location": "India",
                 "results_wanted": 20
             })
             queries.append({
                 "site_name": ["google"],
-                "search_term": "",
+                "search_term": "site reliability engineer",
                 "google_search_term": "site reliability engineer SRE jobs in India since yesterday",
                 "location": "India",
                 "results_wanted": 20
@@ -436,6 +461,8 @@ def scrape_jobspy():
                     args["google_search_term"] = q["google_search_term"]
                 if has_hours_old:
                     args["hours_old"] = 48
+                if "linkedin_fetch_description" in sig.parameters:
+                    args["linkedin_fetch_description"] = True
                     
                 print(f"[Scraper] Querying JobSpy for sites {q['site_name']} (search_term: '{q.get('search_term') or q.get('google_search_term')}') in '{q['location']}'...")
                 res_df = scrape_jobs(**args)
@@ -497,7 +524,11 @@ def scrape_remoteok():
         print("[Scraper] Querying RemoteOK API...")
         res = make_request("https://remoteok.com/api")
         if res:
-            data = res.json()
+            try:
+                data = res.json()
+            except Exception as e:
+                print(f"[Scraper Warning] Failed to parse RemoteOK JSON: {e}")
+                return []
             if isinstance(data, list) and len(data) > 1:
                 for item in data[1:]:
                     if not isinstance(item, dict):
