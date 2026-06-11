@@ -60,6 +60,9 @@ jobs:
           git add -f seen_jobs.json
           git commit -m "chore: update seen_jobs.json [skip ci]" || { echo "No changes to seen_jobs.json"; exit 0; }
           
+          # Discard other unstaged changes to tracked files so they do not block pulling
+          git checkout -- .
+          
           # Retry loop with pull --rebase to prevent conflicts if remote updates
           for i in {1..3}
           do
