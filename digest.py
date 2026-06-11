@@ -10,7 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 import pandas as pd
-import google.generativeai as genai
+from google import genai
 import gspread
 from google.oauth2.service_account import Credentials
 import openpyxl
@@ -411,7 +411,7 @@ def scrape_jobspy(proxies=None):
         queries = []
         
         # 1. India DevOps & SRE query
-        q1_sites = [s for s in ["indeed", "linkedin", "glassdoor", "naukri"] if s in supported_sites]
+        q1_sites = [s for s in ["indeed", "linkedin", "glassdoor", "naukri", "bayt"] if s in supported_sites]
         if q1_sites:
             queries.append({
                 "site_name": q1_sites,
@@ -422,7 +422,7 @@ def scrape_jobspy(proxies=None):
             })
             
         # 2. Remote Focus query
-        q2_sites = [s for s in ["indeed", "linkedin", "glassdoor", "zip_recruiter"] if s in supported_sites]
+        q2_sites = [s for s in ["indeed", "linkedin", "glassdoor", "zip_recruiter", "bayt"] if s in supported_sites]
         if q2_sites:
             queries.append({
                 "site_name": q2_sites,
@@ -491,7 +491,7 @@ def scrape_jobspy(proxies=None):
                     desc = clean_html(row.get("description", ""))
                     
                     is_remote = False
-                    if "is_remote" in row:
+                    if "is_remote" in row and row["is_remote"] != "":
                         is_remote = bool(row["is_remote"])
                     else:
                         is_remote = "remote" in str(location).lower()
@@ -568,7 +568,7 @@ def scrape_hn_jobs():
     try:
         print("[Scraper] Fetching Hacker News Jobs RSS...")
         import feedparser
-        res = make_request("https://news.ycombinator.com/jobsrss")
+        res = make_request("https://hnrss.org/jobs")
         if res:
             feed = feedparser.parse(res.text)
             for entry in feed.entries:
@@ -717,8 +717,8 @@ def score_job_with_gemini(job, profile, api_key):
         return calculate_local_matching(job, profile)
         
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        from google import genai
+        client = genai.Client(api_key=api_key)
         
         prompt = f"""You are an expert job alignment and scoring system. Your task is to evaluate the match between a candidate's profile and a job listing.
 
@@ -753,7 +753,10 @@ Provide the response in the following JSON format. Return ONLY the JSON object, 
   "reason": "<one sentence summarizing the candidate's alignment and why this score was given>"
 }}"""
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
         text = response.text.strip()
         if text.startswith("```"):
             text = text.replace("```json", "", 1).replace("```", "", 1).strip()
@@ -832,20 +835,22 @@ def send_digest_email(jobs_list, excel_path, config, scraper_config, total_scrap
     if sender == "sender@gmail.com" or password == "YOUR_GMAIL_APP_PASSWORD" or password == "YOUR_SMTP2GO_PASSWORD":
         print("[Mailer] Email credentials not configured. Skipping email delivery.")
         return
-
+    min_score = scraper_config.get("min_score_to_email", 70)
+    top_n = scraper_config.get("top_n_in_email", 5)
+    
     # Extract dynamic stats
     date_pretty = datetime.now().strftime("%b %d, %Y")
-    total_new = len(jobs_list)
+    email_jobs = [j for j in jobs_list if j["score"] >= min_score]
+    total_new = len(email_jobs)
     
     # Calculate matches categories
-    strong_matches = [j for j in jobs_list if j["score"] >= 80]
-    strong_matches = sorted(strong_matches, key=lambda x: x["score"], reverse=True)[:5]
+    strong_matches = [j for j in email_jobs if j["score"] >= 80]
+    strong_matches = sorted(strong_matches, key=lambda x: x["score"], reverse=True)[:top_n]
     
-    summary_matches = [j for j in jobs_list if 70 <= j["score"] <= 79]
+    summary_matches = [j for j in email_jobs if min_score <= j["score"] <= 79]
     summary_matches = sorted(summary_matches, key=lambda x: x["score"], reverse=True)
     
-    strong_matches_count = len([j for j in jobs_list if j["score"] >= 80])
-
+    strong_matches_count = len([j for j in email_jobs if j["score"] >= 80])
     # Google sheet link
     sheets_config = config.get("google_sheets", {})
     sheet_id = sheets_config.get("sheet_id", "")
@@ -967,7 +972,7 @@ def send_digest_email(jobs_list, excel_path, config, scraper_config, total_scrap
           <!-- 4. Stats footer & 5. Footer -->
           <div style="background-color: #F8F5EE; border-top: 1px solid rgba(201, 168, 76, 0.4); padding: 28px 24px; color: #1A1A2E; font-size: 12px; line-height: 1.6; text-align: left;">
             <h3 style="font-size: 11px; font-weight: bold; color: #1A1A2E; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px; font-family: monospace; text-align: left;">📊 DIGEST METRICS</h3>
-            <p style="margin: 0; text-align: left;">Sources checked: 7</p>
+            <p style="margin: 0; text-align: left;">Sources checked: 11</p>
             <p style="margin: 0; text-align: left;">Total scraped: {total_scraped}</p>
             <p style="margin: 0; text-align: left;">After filtering: {total_new}</p>
             <p style="margin: 0; text-align: left;">Strong matches (&ge;80%): {strong_matches_count}</p>
@@ -1162,6 +1167,7 @@ def main():
     filtered_out_by_age = 0
     filtered_out_by_role = 0
     filtered_out_by_noise = 0
+    filtered_out_by_location = 0
     filtered_out_by_dead_link = 0
     filtered_out_by_duplicate = 0
     
@@ -1215,6 +1221,39 @@ def main():
                 filtered_out_by_noise += 1
                 continue
 
+            job_loc = job.get("location", "").lower()
+            local_cities = [loc.lower() for loc in profile.get("preferred_locations", []) if loc.lower() != "remote"]
+            city_match = any(city in job_loc for city in local_cities)
+
+            
+            is_remote_job = job.get("is_remote", False) or "remote" in job_loc
+            restricted_countries = [
+                "usa", "united states", "us", "canada", "ca", "uk", "united kingdom", "london",
+                "germany", "de", "berlin", "europe", "eu", "australia", "au", "singapore", "sg",
+                "brazil", "br", "egypt", "eg", "philippines", "ph", "vietnam", "vn",
+                "portugal", "pt", "poland", "pl", "romania", "ro", "spain", "es", "france", "fr",
+                "italy", "it", "netherlands", "nl", "switzerland", "ch", "sweden", "se", "austria", "at",
+                "belgium", "be", "denmark", "dk", "finland", "fi", "norway", "no", "ireland", "ie",
+                "japan", "jp", "korea", "kr", "china", "cn", "taiwan", "tw", "mexico", "mx",
+                "argentina", "ar", "colombia", "co", "chile", "cl", "peru", "pe", "south africa", "za",
+                "new zealand", "nz"
+            ]
+            allowed_global = ["worldwide", "global", "india", "anywhere"]
+            
+            is_valid_remote = False
+            if is_remote_job:
+                # Word boundary check for short country codes, simple substring search for full names
+                has_restriction = any(re.search(rf"\b{re.escape(country)}\b", job_loc) for country in restricted_countries)
+                if not has_restriction:
+                    has_restriction = any(country in job_loc for country in ["united states", "united kingdom", "germany", "europe", "australia"])
+                has_global_exception = any(g in job_loc for g in allowed_global)
+                if not has_restriction or has_global_exception:
+                    is_valid_remote = True
+                    
+            if not (city_match or is_valid_remote):
+                filtered_out_by_location += 1
+                continue
+
             # Check url liveness
             if not is_url_alive(clean_url):
                 filtered_out_by_dead_link += 1
@@ -1242,7 +1281,7 @@ def main():
     for src in source_fetched.keys():
         print(f" - {src.upper():<15} | Fetched: {source_fetched[src]:>3} | Passed: {source_passed[src]:>3}")
     print(f"Total raw jobs: {len(raw_jobs)}")
-    print(f"Skipped: {filtered_out_by_age} older than {max_age_days}d, {filtered_out_by_role} role mismatch, {filtered_out_by_noise} noise keywords, {filtered_out_by_dead_link} dead links, {filtered_out_by_duplicate} duplicates")
+    print(f"Skipped: {filtered_out_by_age} older than {max_age_days}d, {filtered_out_by_role} role mismatch, {filtered_out_by_noise} noise keywords, {filtered_out_by_location} location mismatch, {filtered_out_by_dead_link} dead links, {filtered_out_by_duplicate} duplicates")
     print(f"Final net jobs to score: {len(new_jobs)}\n")
 
     if not new_jobs:
