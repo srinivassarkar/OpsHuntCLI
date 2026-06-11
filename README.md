@@ -116,3 +116,29 @@ To automate the script to run daily (Mon-Fri at **11:30 AM** and Sat at **10:00 
 > 2. Click the `+` button.
 > 3. Press `Cmd + Shift + G`, type `/usr/sbin/cron`, and select **cron**.
 > 4. Ensure the toggle for **cron** is enabled.
+
+---
+
+## ☁️ Serverless Automation (GitHub Actions)
+
+Instead of hosting the script on a personal server or local machine, you can automate it for free using **GitHub Actions**. The configured workflow is scheduled to run at:
+- **Weekdays (Monday-Friday) at 11:30 AM IST** (6:00 AM UTC)
+- **Saturdays at 10:00 AM IST** (4:30 AM UTC)
+
+### Setup Instructions
+
+1. **Add Repository Secrets**:
+   Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add:
+   - **`CONFIG_JSON`**: Paste the entire content of your local `config.json` file.
+   - **`SERVICE_ACCOUNT_JSON`** (Optional): If you use Google Sheets integration, paste the entire JSON content of your `service_account.json` file. Otherwise, leave this secret empty.
+
+2. **Configure Workflow Permissions**:
+   To allow the workflow to commit and push changes back to `seen_jobs.json` (which prevents duplicate emails):
+   - Go to **Settings** -> **Actions** -> **General** -> scroll down to **Workflow permissions**.
+   - Select **Read and write permissions**.
+   - Click **Save**.
+
+3. **Manual Trigger / Dry Run**:
+   - Go to the **Actions** tab in your repository.
+   - Click on **Daily DevOps Job Digest** in the left sidebar.
+   - Click **Run workflow** -> **Run workflow** to trigger a manual execution.
