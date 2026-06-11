@@ -36,6 +36,58 @@ Open `config.json` in a text editor to configure your keys:
 - **Gmail App Password**: Enter your email address and a 16-character [Gmail App Password](https://myaccount.google.com/security) (requires 2-Step Verification to be turned ON in your Google Account security settings).
 - **Google Sheet ID** (Optional): Add your Google Sheet ID under `"sheet_id"` and drop your service account credentials file in this folder named `service_account.json`.
 
+### 4. Configuration Skeleton (`config.json`)
+Create a `config.json` file in the root directory with the following structure:
+
+```json
+{
+  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "google_sheets": {
+    "service_account_json": "service_account.json",
+    "sheet_id": "YOUR_GOOGLE_SHEET_ID"
+  },
+  "email": {
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "sender_email": "sender@gmail.com",
+    "sender_password": "YOUR_GMAIL_APP_PASSWORD",
+    "receiver_email": "receiver@gmail.com"
+  },
+  "candidate_profile": {
+    "title": "DevOps Engineer",
+    "experience_years": 3,
+    "skills": [
+      "Kubernetes",
+      "Terraform",
+      "Docker",
+      "Python"
+    ],
+    "preferred_roles": [
+      "DevOps Engineer",
+      "SRE",
+      "Platform Engineer"
+    ],
+    "preferred_locations": ["Hyderabad", "Bangalore", "Remote"],
+    "strong_match_keywords": [
+      "Kubernetes",
+      "Terraform",
+      "SRE"
+    ],
+    "downrank_keywords": [
+      "WordPress",
+      "PHP"
+    ],
+    "target_companies": [
+      "Apple",
+      "PayPal"
+    ]
+  },
+  "scraper": {
+    "max_job_age_days": 7
+  }
+}
+```
+
 ---
 
 ## 🚀 How to Run
