@@ -389,12 +389,15 @@ def scrape_instahyre():
     return jobs
 
 
-def scrape_jobspy():
+def scrape_jobspy(proxies=None):
     jobs = []
     try:
         print("[Scraper] Importing python-jobspy...")
         from jobspy import scrape_jobs
-        from jobspy.scrapers import Site
+        try:
+            from jobspy import Site
+        except ImportError:
+            from jobspy.scrapers import Site
         import inspect
         
         # Check signature compatibility
@@ -463,6 +466,8 @@ def scrape_jobspy():
                     args["hours_old"] = 48
                 if "linkedin_fetch_description" in sig.parameters:
                     args["linkedin_fetch_description"] = True
+                if "proxies" in sig.parameters and proxies:
+                    args["proxies"] = proxies
                     
                 print(f"[Scraper] Querying JobSpy for sites {q['site_name']} (search_term: '{q.get('search_term') or q.get('google_search_term')}') in '{q['location']}'...")
                 res_df = scrape_jobs(**args)
@@ -1116,7 +1121,7 @@ def main():
     arbeitnow_jobs = scrape_arbeitnow()
     naukri_jobs = scrape_naukri()
     instahyre_jobs = scrape_instahyre()
-    jobspy_jobs = scrape_jobspy()
+    jobspy_jobs = scrape_jobspy(proxies=config.get("proxies"))
     remoteok_jobs = scrape_remoteok()
     hn_jobs = scrape_hn_jobs()
     reddit_jobs = scrape_reddit_jobs()
