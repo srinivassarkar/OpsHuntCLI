@@ -392,6 +392,7 @@ def scrape_jobspy():
                 
                 # Standardize columns to lowercase
                 res_df.columns = [c.lower() for c in res_df.columns]
+                res_df = res_df.fillna("")
                 
                 for _, row in res_df.iterrows():
                     title = row.get("title", "")
