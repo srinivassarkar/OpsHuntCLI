@@ -369,28 +369,81 @@ def scrape_jobspy():
     try:
         print("[Scraper] Importing python-jobspy...")
         from jobspy import scrape_jobs
+        from jobspy.scrapers import Site
+        import inspect
         
-        # We query for both devops and sre in India / Remote
-        queries = [
-            {"search_term": "devops", "location": "India", "country_indeed": "India"},
-            {"search_term": "sre", "location": "India", "country_indeed": "India"}
-        ]
+        # Check signature compatibility
+        sig = inspect.signature(scrape_jobs)
+        has_google_term = "google_search_term" in sig.parameters
+        has_hours_old = "hours_old" in sig.parameters
         
+        supported_sites = {s.value for s in Site}
+        print(f"[Scraper] Supported JobSpy sites in this environment: {list(supported_sites)}")
+        
+        queries = []
+        
+        # 1. India DevOps & SRE query
+        q1_sites = [s for s in ["indeed", "linkedin", "glassdoor", "naukri"] if s in supported_sites]
+        if q1_sites:
+            queries.append({
+                "site_name": q1_sites,
+                "search_term": '("devops" OR "sre" OR "platform" OR "cloud engineer") (kubernetes OR terraform) -intern -support -fresher',
+                "location": "India",
+                "country_indeed": "India",
+                "results_wanted": 25
+            })
+            
+        # 2. Remote Focus query
+        q2_sites = [s for s in ["indeed", "linkedin", "glassdoor", "zip_recruiter"] if s in supported_sites]
+        if q2_sites:
+            queries.append({
+                "site_name": q2_sites,
+                "search_term": '("devops" OR "sre" OR "platform" OR "cloud engineer") (kubernetes OR terraform) -intern -support -fresher',
+                "location": "Remote",
+                "country_indeed": "USA",
+                "results_wanted": 25
+            })
+            
+        # 3. Google Jobs query (only if Google is supported in Site list)
+        if "google" in supported_sites and has_google_term:
+            queries.append({
+                "site_name": ["google"],
+                "search_term": "",
+                "google_search_term": "devops engineer jobs in India since yesterday",
+                "location": "India",
+                "results_wanted": 20
+            })
+            queries.append({
+                "site_name": ["google"],
+                "search_term": "",
+                "google_search_term": "site reliability engineer SRE jobs in India since yesterday",
+                "location": "India",
+                "results_wanted": 20
+            })
+            
         for q in queries:
             try:
-                print(f"[Scraper] Querying JobSpy for '{q['search_term']}' in '{q['location']}'...")
-                res_df = scrape_jobs(
-                    site_name=["linkedin", "indeed", "zip_recruiter"],
-                    search_term=q["search_term"],
-                    location=q["location"],
-                    country_indeed=q["country_indeed"],
-                    results_wanted=15
-                )
+                # Build parameters dynamically
+                args = {
+                    "site_name": q["site_name"],
+                    "search_term": q["search_term"],
+                    "location": q["location"],
+                    "results_wanted": q["results_wanted"]
+                }
+                if "country_indeed" in sig.parameters and "country_indeed" in q:
+                    args["country_indeed"] = q["country_indeed"]
+                if has_google_term and "google_search_term" in q:
+                    args["google_search_term"] = q["google_search_term"]
+                if has_hours_old:
+                    args["hours_old"] = 48
+                    
+                print(f"[Scraper] Querying JobSpy for sites {q['site_name']} (search_term: '{q.get('search_term') or q.get('google_search_term')}') in '{q['location']}'...")
+                res_df = scrape_jobs(**args)
                 
                 if res_df is None or res_df.empty:
                     continue
                 
-                # Standardize columns to lowercase
+                # Standardize columns to lowercase and clean NaNs
                 res_df.columns = [c.lower() for c in res_df.columns]
                 res_df = res_df.fillna("")
                 
@@ -429,7 +482,7 @@ def scrape_jobspy():
                             "posted_date": posted
                         })
             except Exception as e:
-                print(f"[Scraper Warning] JobSpy query for '{q['search_term']}' failed: {e}")
+                print(f"[Scraper Warning] JobSpy query for sites {q['site_name']} failed: {e}")
                 
     except ImportError:
         print("[Scraper Warning] python-jobspy not installed. Skipping JobSpy (LinkedIn, Indeed, Google Jobs) sources.")
