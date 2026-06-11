@@ -28,13 +28,20 @@ jobs:
           pip install -r requirements.txt
 
       - name: Create config.json
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
         run: |
-          echo '${{ secrets.CONFIG_JSON }}' > config.json
+          echo "$CONFIG_JSON" > config.json
 
       - name: Create service_account.json
-        if: "${{ secrets.SERVICE_ACCOUNT_JSON != '' }}"
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
         run: |
-          echo '${{ secrets.SERVICE_ACCOUNT_JSON }}' > service_account.json
+          if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "$SERVICE_ACCOUNT_JSON" > service_account.json
+          else
+            echo "SERVICE_ACCOUNT_JSON secret is empty. Skipping."
+          fi
 
       - name: Run Job Digest Scraper
         run: python digest.py
