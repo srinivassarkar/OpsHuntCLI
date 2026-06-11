@@ -1,0 +1,12 @@
+# Ignore secret configurations and auth keys
+config.json
+service_account.json
+
+# Ignore local databases and tracking files
+seen_jobs.json
+*.xlsx
+*.log
+
+# Ignore python cache files
+__pycache__/
+*.pyc
