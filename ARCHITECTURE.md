@@ -12,7 +12,7 @@ The OpsHunt Daily Job Digest is a serverless, event-driven scraping pipeline des
 
 ```mermaid
 graph TD
-    A["Cron Trigger / Manual Dispatch"] --> B["GitHub Actions Runner"]
+    A["External Cron-Job.org Scheduler / Manual Dispatch"] -->|POST /dispatches| B["GitHub Actions Runner"]
     B --> C["Scraping Layer (11 Sources)"]
     C --> D["Deduplication & Quality Filters"]
     D --> E{"Smart Pre-Filtering (Keywords)"}
@@ -33,7 +33,7 @@ graph TD
 
 ### 2. Core Components
 
-- **Trigger Layer**: Runs automatically in the cloud on GitHub Actions based on a schedule (Weekdays at 11:30 AM IST, Saturdays at 10:00 AM IST) or via manual triggers.
+- **Trigger Layer**: Run on-time using an external cloud cron scheduler (Cron-Job.org) that hits the GitHub repository's `workflow_dispatch` API endpoint. This bypasses GitHub's built-in scheduler delays (Weekdays at 11:30 AM IST, Saturdays at 10:00 AM IST).
 - **Scraping Layer**: Ingests DevOps/SRE job openings concurrently from 11 distinct sources (traditional APIs, RSS feeds, open-search portals, and JobSpy).
 - **Filtering & Deduplication Layer**: Cleanses raw scraping data, removes duplicates using URL parsing, applies role keyword matching, and enforces freshness rules.
 - **AI Scoring Layer**: Uses a smart pre-filtering mechanism to skip Gemini API calls for weak matches (saving 70-85% in API limits). High-relevance jobs are sent to Gemini 2.5 Flash using the official `google-genai` SDK. A local procedural scorer is used as a fallback if API rate/quota limits are reached.

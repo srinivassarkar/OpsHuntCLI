@@ -22,27 +22,57 @@ The tool aggregates DevOps and SRE job postings daily from 11 different sources,
 
 ## ☁️ 1. Serverless Setup on GitHub (Recommended)
 
-The workflow is pre-configured to run automatically at:
-- **Weekdays (Monday-Friday) at 11:30 AM IST** (6:00 AM UTC)
-- **Saturdays at 10:00 AM IST** (4:30 AM UTC)
+GitHub Actions' native scheduler (`on.schedule`) is prone to unpredictable queue delays (often executing 30 to 90 minutes late). To guarantee that your Daily Job Digest runs **exactly on time**, we trigger the workflow externally using a free cloud cron service (**Cron-Job.org**) hitting GitHub's API.
 
-### Setup Steps:
+---
+
+### Phase A: GitHub Repository Setup
 
 1. **Add Repository Secrets**:
-   Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add the following:
-   - **`CONFIG_JSON`**: Paste the entire content of your `config.json` file (see the skeleton format below). Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/).
-   - **`SERVICE_ACCOUNT_JSON`** (Optional): If using Google Sheets integration, paste the entire JSON content of your `service_account.json` credentials. Otherwise, leave this secret blank.
+   Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret** and add:
+   - **`CONFIG_JSON`**: Paste the entire content of your `config.json` file. Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+   - **`SERVICE_ACCOUNT_JSON`** (Optional): Paste the entire JSON content of your `service_account.json` if using Google Sheets integration. Otherwise, leave this secret blank.
 
 2. **Configure Workflow Permissions**:
    To allow the workflow to commit and push changes back to `seen_jobs.json` (to prevent duplicate emails):
    - Go to **Settings** -> **Actions** -> **General** -> scroll down to **Workflow permissions**.
-   - Select **Read and write permissions**.
-   - Click **Save**.
+   - Select **Read and write permissions** and click **Save**.
 
-3. **Manual Trigger / Dry Run**:
-   - Go to the **Actions** tab in your repository.
-   - Click on **Daily DevOps Job Digest** in the left sidebar.
-   - Click **Run workflow** -> **Run workflow** to trigger an immediate test run and watch the logs execute live!
+---
+
+### Phase B: Generate GitHub Personal Access Token (PAT)
+
+An API token is required to allow the external scheduler to trigger the workflow.
+
+1. Go to GitHub **Settings** -> **Developer Settings** -> **Personal Access Tokens** -> **Fine-grained tokens** -> **Generate new token**.
+2. Set the following:
+   - **Token name**: `OpsHunt Cron Trigger`
+   - **Repository access**: Select **Only select repositories** -> choose `srinivassarkar/OpsHuntCLI`.
+   - **Permissions**: Under **Repository permissions**, find **Actions** and set it to **Read and write**. (Leave everything else at default/no-access).
+3. Click **Generate token** and copy the generated token immediately.
+
+---
+
+### Phase C: Setup Cron-Job.org for On-Time Execution
+
+1. Register or log in at [Cron-Job.org](https://cron-job.org).
+2. Go to **Cronjobs** -> **Create cronjob** and fill in:
+   - **Title**: `OpsHunt Daily Digest Trigger`
+   - **Address (URL)**: `https://api.github.com/repos/srinivassarkar/OpsHuntCLI/actions/workflows/daily_digest.yml/dispatches`
+   - **Request Method**: `POST`
+   - **Request Body**: `{"ref": "main"}` (Choose `application/json` or enter raw JSON)
+   - **Time Zone**: Select `Asia/Kolkata (IST)`
+   - **Schedule**:
+     - Mon-Fri at **11:30 AM**
+     - Sat at **10:00 AM**
+   - **Authentication**: Leave Username and Password blank (unticked).
+3. Under **Headers**, click "Add header" and add these 5 keys:
+   * **`Authorization`**  →  `Bearer <YOUR_PAT_TOKEN>` (Make sure to include `Bearer ` before your token)
+   * **`Accept`**  →  `application/vnd.github+json`
+   * **`X-GitHub-Api-Version`**  →  `2022-11-28`
+   * **`User-Agent`**  →  `Cron-Job-Scheduler`
+   * **`Content-Type`**  →  `application/json`
+4. Click **Create** and run a **Test Run** to verify! The workflow will run immediately.
 
 ---
 
