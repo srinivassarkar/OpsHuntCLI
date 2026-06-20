@@ -410,47 +410,45 @@ def scrape_jobspy(proxies=None):
         
         queries = []
         
-        # 1. India DevOps & SRE query
-        q1_sites = [s for s in ["indeed", "linkedin", "glassdoor", "naukri", "bayt"] if s in supported_sites]
+        # 1. India DevOps & SRE query (LinkedIn only to avoid anti-bot blocks)
+        q1_sites = [s for s in ["linkedin"] if s in supported_sites]
         if q1_sites:
             queries.append({
                 "site_name": q1_sites,
                 "search_term": 'devops OR sre OR "platform engineer" OR "cloud engineer"',
                 "location": "India",
-                "country_indeed": "India",
                 "results_wanted": 25
             })
             
-        # 2. Remote Focus query
-        q2_sites = [s for s in ["indeed", "linkedin", "glassdoor", "zip_recruiter", "bayt"] if s in supported_sites]
+        # 2. Remote Focus query (LinkedIn only to avoid anti-bot blocks)
+        q2_sites = [s for s in ["linkedin"] if s in supported_sites]
         if q2_sites:
             queries.append({
                 "site_name": q2_sites,
                 "search_term": 'devops OR sre OR "platform engineer" OR "cloud engineer"',
                 "location": "Remote",
-                "country_indeed": "USA",
                 "results_wanted": 25
             })
             
         # 3. Google Jobs query (only if Google is supported in Site list)
+        # Using a single combined query to target Greenhouse, Lever, and Ashby boards at once and minimize requests
         if "google" in supported_sites and has_google_term:
             queries.append({
                 "site_name": ["google"],
-                "search_term": "devops engineer",
-                "google_search_term": "devops engineer jobs in India since yesterday",
+                "search_term": "devops SRE platform",
+                "google_search_term": "devops OR SRE OR \"platform engineer\" (site:greenhouse.io OR site:lever.co OR site:ashbyhq.com) India OR Remote since yesterday",
                 "location": "India",
-                "results_wanted": 20
-            })
-            queries.append({
-                "site_name": ["google"],
-                "search_term": "site reliability engineer",
-                "google_search_term": "site reliability engineer SRE jobs in India since yesterday",
-                "location": "India",
-                "results_wanted": 20
+                "results_wanted": 40
             })
             
         for q in queries:
             try:
+                # Add delay if querying Google to avoid anti-bot rate limiting (429)
+                if "google" in q["site_name"]:
+                    import time
+                    print("[Scraper] Sleeping 8 seconds before querying Google Jobs to avoid rate limit...")
+                    time.sleep(8.0)
+                    
                 # Build parameters dynamically
                 args = {
                     "site_name": q["site_name"],
@@ -600,6 +598,114 @@ def scrape_hn_jobs():
                 })
     except Exception as e:
         print(f"[Scraper Error] Hacker News Jobs RSS failed: {e}")
+    return jobs
+
+def parse_hn_comment(comment):
+    html_text = comment.get("comment_text", "")
+    if not html_text:
+        return None
+    cid = comment.get("objectID")
+    url = f"https://news.ycombinator.com/item?id={cid}"
+    posted_date = comment.get("created_at", datetime.now().isoformat())
+    
+    # Split header part
+    parts = html_text.split("<p>")
+    header_html = parts[0]
+    header = clean_html(header_html)
+    
+    header_parts = [p.strip() for p in re.split(r'\|| - | – ', header) if p.strip()]
+    
+    company = "Hacker News Startup"
+    title = "DevOps/SRE Specialist"
+    location = "Remote"
+    is_remote = False
+    
+    if len(header_parts) >= 1:
+        company = header_parts[0]
+    
+    title_candidates = []
+    location_candidates = []
+    
+    for part in header_parts[1:]:
+        part_lower = part.lower()
+        if "remote" in part_lower:
+            is_remote = True
+            location_candidates.append(part)
+        elif any(kw in part_lower for kw in ["engineer", "developer", "sre", "devops", "platform", "lead", "architect", "manager", "sysadmin"]):
+            title_candidates.append(part)
+        elif any(kw in part_lower for kw in ["full-time", "contract", "intern", "visa", "h1b"]):
+            pass
+        else:
+            location_candidates.append(part)
+            
+    if title_candidates:
+        title = " / ".join(title_candidates)
+    elif len(header_parts) >= 2:
+        title = header_parts[1]
+        
+    if location_candidates:
+        location = ", ".join(location_candidates)
+    elif is_remote:
+        location = "Remote"
+    else:
+        location = "Remote / ONSITE"
+        
+    if "remote" in html_text.lower():
+        is_remote = True
+        
+    description = clean_html(html_text)
+    if len(description) > 1500:
+        description = description[:1497] + "..."
+        
+    return {
+        "title": title,
+        "company": company,
+        "location": location,
+        "is_remote": is_remote,
+        "source": "hackernews-hiring",
+        "url": url,
+        "description": description,
+        "posted_date": posted_date
+    }
+
+def scrape_hn_who_is_hiring():
+    jobs = []
+    try:
+        print("[Scraper] Querying Algolia API for Ask HN: Who is hiring?...")
+        url = 'https://hn.algolia.com/api/v1/search_by_date?query="who+is+hiring"&tags=story,author_whoishiring'
+        res = make_request(url)
+        if not res:
+            return jobs
+        hits = res.json().get("hits", [])
+        if not hits:
+            return jobs
+        
+        latest_story = hits[0]
+        story_id = latest_story["objectID"]
+        
+        keywords = ["devops", "sre", "kubernetes", "platform"]
+        seen_comment_ids = set()
+        
+        for kw in keywords:
+            search_url = f'https://hn.algolia.com/api/v1/search?tags=comment,story_{story_id}&query={kw}&hitsPerPage=50'
+            comments_res = make_request(search_url)
+            if not comments_res:
+                continue
+            comment_hits = comments_res.json().get("hits", [])
+            for c in comment_hits:
+                # Filter out replies (only allow top-level job postings where parent_id matches the story_id)
+                p_id = c.get("parent_id")
+                if p_id and str(p_id) != str(story_id):
+                    continue
+                cid = c.get("objectID")
+                if cid not in seen_comment_ids:
+                    seen_comment_ids.add(cid)
+                    parsed = parse_hn_comment(c)
+                    if parsed:
+                        jobs.append(parsed)
+        print(f"[Scraper] Algolia HN: Fetched {len(jobs)} comments matching keywords.")
+    except Exception as e:
+        print(f"[Scraper Error] Algolia HN Who is Hiring failed: {e}")
     return jobs
 
 def scrape_reddit_jobs():
@@ -1152,6 +1258,7 @@ def main():
     jobspy_jobs = scrape_jobspy(proxies=config.get("proxies"))
     remoteok_jobs = scrape_remoteok()
     hn_jobs = scrape_hn_jobs()
+    hn_hiring_jobs = scrape_hn_who_is_hiring()
     reddit_jobs = scrape_reddit_jobs()
     
     raw_jobs.extend(remotive_jobs)
@@ -1164,6 +1271,7 @@ def main():
     raw_jobs.extend(jobspy_jobs)
     raw_jobs.extend(remoteok_jobs)
     raw_jobs.extend(hn_jobs)
+    raw_jobs.extend(hn_hiring_jobs)
     raw_jobs.extend(reddit_jobs)
     
     # Store source counts
@@ -1177,7 +1285,7 @@ def main():
         "instahyre": len(instahyre_jobs),
         "jobspy": len(jobspy_jobs),
         "remoteok": len(remoteok_jobs),
-        "hackernews": len(hn_jobs),
+        "hackernews": len(hn_jobs) + len(hn_hiring_jobs),
         "reddit": len(reddit_jobs)
     }
     
