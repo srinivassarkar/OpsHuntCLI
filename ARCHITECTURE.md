@@ -34,8 +34,8 @@ graph TD
 ### 2. Core Components
 
 - **Trigger Layer**: Run on-time using an external cloud cron scheduler (Cron-Job.org) that hits the GitHub repository's `workflow_dispatch` API endpoint. This bypasses GitHub's built-in scheduler delays (Weekdays at 11:30 AM IST, Saturdays at 10:00 AM IST).
-- **Scraping Layer**: Ingests DevOps/SRE job openings concurrently from 11 distinct sources (traditional APIs, RSS feeds, open-search portals, and JobSpy).
-- **Filtering & Deduplication Layer**: Cleanses raw scraping data, removes duplicates using URL parsing, applies role keyword matching, and enforces freshness rules.
+- **Scraping Layer**: Ingests DevOps/SRE job openings concurrently from 11 distinct sources. Includes direct APIs, RSS feeds, and an unblocked GHA pipeline setup (JobSpy configured for LinkedIn-only to prevent anti-bot blocking, combined Google search operators to query Greenhouse/Lever/Ashby ATS pages, and an Algolia HN "Who is Hiring" comment scraper).
+- **Filtering & Deduplication Layer**: Cleanses raw scraping data, removes duplicates using URL parsing, filters out non-parent Hacker News comments (discarding resume candidates and thread replies), applies role keyword matching, and enforces freshness rules.
 - **AI Scoring Layer**: Uses a smart pre-filtering mechanism to skip Gemini API calls for weak matches (saving 70-85% in API limits). High-relevance jobs are sent to Gemini 2.5 Flash using the official `google-genai` SDK. A local procedural scorer is used as a fallback if API rate/quota limits are reached.
 - **Relevance Threshold & Early Exit**: Scored jobs are filtered by `min_score_to_email` (e.g. 65). If no jobs meet the threshold, the script updates the seen URLs database to prevent reprocessing tomorrow and exits cleanly without sending a blank email.
 - **Compilation Layer**: Compiles matched jobs into a custom Deep Navy & Gold themed Excel spreadsheet with color-coded rows based on match score.
@@ -67,8 +67,10 @@ job_record = {
 
 #### A. Scraper Module (`digest.py`)
 - **`make_request(url, params, headers)`**: Standard request wrapper. Enforces browser headers, strict `10.0` second timeout, and a single-retry policy.
-- **`scrape_jobspy()`**: Dynamically inspects the locally installed version of the `python-jobspy` library to check for supported boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs, Naukri, Bayt) and supported arguments. It excludes `bdjobs` to avoid type error initialization crashes in JobSpy.
-- **Feed-Specific Scrapers**: Custom logic handles mapping for Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri API, Instahyre, RemoteOK, Hacker News RSS (`hnrss.org/jobs`), and Reddit RSS.
+- **`scrape_jobspy()`**: Dynamically inspects the locally installed version of the `python-jobspy` library. To prevent WAF blocking on GHA runners, it restricts boards to **LinkedIn-only**. It queries Google Jobs using a single optimized Boolean search string (`devops OR SRE (site:greenhouse.io OR site:lever.co OR site:ashbyhq.com)`) with a preceding 8-second sleep to avoid Google rate limit blocks.
+- **`scrape_hn_who_is_hiring()`**: Custom scraper querying the public Algolia HN Search API for comments in the latest monthly "Ask HN: Who is hiring?" thread. Uses `parent_id` matching to extract only direct company postings.
+- **`parse_hn_comment()`**: Formats Algolia comments into the standard job schema, extracting company name, roles, location details, and remote status.
+- **Feed-Specific Scrapers**: Custom logic handles mapping for Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri API, Instahyre, RemoteOK, Hacker News RSS, and Reddit RSS.
 
 #### B. Pre-Filtering & Scoring Module (`digest.py`)
 - **Smart Pre-Filter Loop**: Iterates through deduplicated jobs and scans the text for `strong_match_keywords`.

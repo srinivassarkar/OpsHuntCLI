@@ -8,14 +8,15 @@ The tool aggregates DevOps and SRE job postings daily from 11 different sources,
 
 ## 🌟 Core Features
 
-- **11 Scraped Feeds**: Aggregates openings from Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Naukri, Instahyre, LinkedIn, Indeed, ZipRecruiter, RemoteOK, Hacker News Jobs (`hnrss.org/jobs`), and Reddit (`r/devops` and `r/sre`).
+- **11 Scraped Feeds**: Aggregates openings from Remotive, Jobicy, We Work Remotely, Otta, Arbeitnow, Instahyre, LinkedIn (via JobSpy), Google Jobs (via JobSpy), RemoteOK, Hacker News (RSS and the monthly "Who is Hiring" thread), and Reddit (`r/devops` and `r/sre`).
+- **Anti-Bot WAF Resiliency**: Configured JobSpy to target LinkedIn-only (bypassing 403 blocks from indeed/glassdoor/naukri) and optimized Google search requests with an 8-second delay and combined operators to query Greenhouse, Lever, and Ashby boards at once without WAF blocks.
+- **Hacker News "Who is Hiring" Algolia Scraper**: Connects to the free Algolia API to scrape the monthly hiring thread comments. Uses a smart `parent_id == story_id` rule to instantly discard candidate resumes and reply threads, capturing only primary job posts.
 - **Serverless Execution**: Runs entirely in the cloud via GitHub Actions schedules. No servers, cron-daemons, or local terminals required.
 - **Smart Pre-Filtering**: Analyzes jobs locally before calling Gemini to reduce daily API token usage by 70-85%.
 - **Experience-Level Downranking**: Automatically flags and downranks senior, staff, lead, principal, manager, and junior roles that mismatch the candidate's target experience level (both in Gemini and the local fallback engine).
 - **Dynamic Gemini AI Scoring**: Matches and ranks jobs (0-100) based on your custom skills, target experience, preferred locations, and target companies (using the modern `google-genai` SDK with a robust local fallback engine).
 - **Early Exit on Zero Matches**: If no jobs meet your minimum score threshold on a given day, the script updates the seen database and exits cleanly, avoiding sending spam/empty emails.
 - **Premium Navy & Gold Styling**: Delivers a styled HTML email digest alongside an automated, color-coded Excel spreadsheet.
-- **Google Sheets Integration**: Automatically appends scored jobs directly to an online Google Sheet for tracking.
 - **Seen Jobs Memory**: Persists previously sent jobs back to Git to ensure you never receive duplicate emails.
 
 ---
