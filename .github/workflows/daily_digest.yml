@@ -1,6 +1,6 @@
 name: Daily DevOps Job Digest
 
-#on:
+on:
 #  schedule:
 #   - cron: '0 6 * * 1-5'   # 11:30 AM IST, Monday-Friday (6:00 AM UTC)
 #    - cron: '30 4 * * 6'    # 10:00 AM IST, Saturday (4:30 AM UTC)
